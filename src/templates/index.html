@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <title>Provenance Guard</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='styles.css') }}"
+    >
+
+</head>
+
+<body>
+
+    <h1>Provenance Guard</h1>
+
+    <textarea
+        id="textInput"
+        placeholder="Paste text..."
+    ></textarea>
+
+    <button id="analyzeButton">
+        Analyze
+    </button>
+
+    <pre id="results"></pre>
+
+    <script
+        src="{{ url_for('static', filename='app.js') }}"
+    ></script>
+
+</body>
+
+</html>
