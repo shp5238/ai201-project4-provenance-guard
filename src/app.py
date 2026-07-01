@@ -60,22 +60,11 @@ def appeal():
             "message": "No classified submission found for this content_id and creator_id."
         }), 404
 
-    entry = {
-        "content_id": content_id,
-        "creator_id": creator_id,
-        "attribution": "appeal_submitted",
-        "confidence": None,
-        "label": "Creator submitted an appeal.",
-        "creator_reasoning": reasoning,
-        "status": "under_review"
-    }
-
-    log_event(entry)
-
     return jsonify({
         "content_id": content_id,
         "status": "under_review",
         "classification_status": updated_classification["status"],
+        "appeal_filed": updated_classification["appeal_filed"],
         "message": "Your appeal was received and is under review."
     })
 

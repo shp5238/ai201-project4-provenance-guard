@@ -3,6 +3,16 @@ import re
 from collections import Counter
 import math
 
+from perplexity import find_perplexity_score, has_groq_api_key
+
+
+PERPLEXITY_WEIGHT = 0.6
+STYLOMETRY_WEIGHT = 0.4
+MISSING_GROQ_KEY_MESSAGE = (
+    "This analysis is only using stylometry as a Grok API key has not been "
+    "provided, so accuracy can vary."
+)
+
 
 def clean_words(text):
     return re.findall(r"\b\w+\b", text.lower())
@@ -98,6 +108,46 @@ def find_stylometry(text):
     return max(0.0, min(final_score, 1.0))
 
 
+def find_weighted_human_score(text):
+    stylometry_score = find_stylometry(text)
+
+    if not has_groq_api_key():
+        return {
+            "human_score": stylometry_score,
+            "perplexity_score": None,
+            "stylometry_score": stylometry_score,
+            "perplexity_weight": 0.0,
+            "stylometry_weight": 1.0,
+            "message": MISSING_GROQ_KEY_MESSAGE
+        }
+
+    perplexity_score = find_perplexity_score(text)
+
+    if perplexity_score is None:
+        return {
+            "human_score": stylometry_score,
+            "perplexity_score": None,
+            "stylometry_score": stylometry_score,
+            "perplexity_weight": 0.0,
+            "stylometry_weight": 1.0,
+            "message": MISSING_GROQ_KEY_MESSAGE
+        }
+
+    weighted_score = (
+        (perplexity_score * PERPLEXITY_WEIGHT)
+        + (stylometry_score * STYLOMETRY_WEIGHT)
+    )
+
+    return {
+        "human_score": max(0.0, min(weighted_score, 1.0)),
+        "perplexity_score": perplexity_score,
+        "stylometry_score": stylometry_score,
+        "perplexity_weight": PERPLEXITY_WEIGHT,
+        "stylometry_weight": STYLOMETRY_WEIGHT,
+        "message": None
+    }
+
+
 def classify_text(text, creator_id="anonymous"):
     if text is None or text.strip() == "":
         return {
@@ -117,7 +167,8 @@ def classify_text(text, creator_id="anonymous"):
             "label": "Text is too short to classify confidently."
         }
 
-    human_score = find_stylometry(text)
+    signal_scores = find_weighted_human_score(text)
+    human_score = signal_scores["human_score"]
 
     if human_score <= 0.3:
         attribution = "likely_ai"
@@ -131,13 +182,23 @@ def classify_text(text, creator_id="anonymous"):
 
     confidence = abs(human_score - 0.5) * 2
 
-    return {
+    response = {
         "status": "classified",
         "creator_id": creator_id,
         "human_score": round(human_score, 3),
         "confidence": round(confidence, 3),
         "attribution": attribution,
         "label": label,
+        "signal_scores": {
+            "perplexity_score": (
+                round(signal_scores["perplexity_score"], 3)
+                if signal_scores["perplexity_score"] is not None
+                else None
+            ),
+            "stylometry_score": round(signal_scores["stylometry_score"], 3),
+            "perplexity_weight": signal_scores["perplexity_weight"],
+            "stylometry_weight": signal_scores["stylometry_weight"]
+        },
         "metrics": {
             "lexical_diversity": round(find_lexical_diversity(text), 3),
             "sentence_variation": round(find_sentence_variation(text), 3),
@@ -145,3 +206,8 @@ def classify_text(text, creator_id="anonymous"):
             "trigram_overlap": round(find_ngram_overlap(text, 3), 3)
         }
     }
+
+    if signal_scores["message"]:
+        response["message"] = signal_scores["message"]
+
+    return response

@@ -7,6 +7,7 @@ from detector import (
     find_sentence_variation,
     find_ngram_overlap,
     find_stylometry,
+    find_weighted_human_score,
     classify_text,
 )
 
@@ -86,7 +87,10 @@ def test_stylometry_score_is_between_zero_and_one():
     assert 0.0 <= score <= 1.0
 
 
-def test_classify_text_returns_expected_keys():
+def test_classify_text_returns_expected_keys(monkeypatch):
+    monkeypatch.setattr("detector.has_groq_api_key", lambda: True)
+    monkeypatch.setattr("detector.find_perplexity_score", lambda text: 0.5)
+
     text = (
         "I've been thinking a lot about remote work lately. "
         "There are genuine tradeoffs with flexibility and no commute on one side. "
@@ -102,10 +106,43 @@ def test_classify_text_returns_expected_keys():
     assert "confidence" in result
     assert "attribution" in result
     assert "label" in result
+    assert "signal_scores" in result
     assert "metrics" in result
 
 
-def test_metrics_are_returned():
+def test_weighted_human_score_combines_perplexity_and_stylometry(monkeypatch):
+    monkeypatch.setattr("detector.has_groq_api_key", lambda: True)
+    monkeypatch.setattr("detector.find_perplexity_score", lambda text: 0.9)
+    monkeypatch.setattr("detector.find_stylometry", lambda text: 0.3)
+
+    result = find_weighted_human_score("This is long enough to score.")
+
+    assert result["human_score"] == pytest.approx(0.66)
+    assert result["perplexity_score"] == 0.9
+    assert result["stylometry_score"] == 0.3
+
+
+def test_weighted_human_score_uses_only_stylometry_without_groq_key(monkeypatch):
+    monkeypatch.setattr("detector.has_groq_api_key", lambda: False)
+    monkeypatch.setattr("detector.find_stylometry", lambda text: 0.3)
+
+    result = find_weighted_human_score("This is long enough to score.")
+
+    assert result["human_score"] == 0.3
+    assert result["perplexity_score"] is None
+    assert result["stylometry_score"] == 0.3
+    assert result["perplexity_weight"] == 0.0
+    assert result["stylometry_weight"] == 1.0
+    assert (
+        result["message"]
+        == "This analysis is only using stylometry as a Grok API key has not been provided, so accuracy can vary."
+    )
+
+
+def test_metrics_are_returned(monkeypatch):
+    monkeypatch.setattr("detector.has_groq_api_key", lambda: True)
+    monkeypatch.setattr("detector.find_perplexity_score", lambda text: 0.5)
+
     text = (
         "This is a longer test paragraph. "
         "It has enough words to pass the short text check. "
@@ -120,3 +157,46 @@ def test_metrics_are_returned():
     assert "sentence_variation" in metrics
     assert "bigram_overlap" in metrics
     assert "trigram_overlap" in metrics
+
+
+def test_signal_scores_are_returned(monkeypatch):
+    monkeypatch.setattr("detector.has_groq_api_key", lambda: True)
+    monkeypatch.setattr("detector.find_perplexity_score", lambda text: 0.75)
+    monkeypatch.setattr("detector.find_stylometry", lambda text: 0.25)
+
+    text = (
+        "This is a longer test paragraph. "
+        "It has enough words to pass the short text check. "
+        "The detector should return the signal scores."
+    )
+
+    result = classify_text(text)
+    signal_scores = result["signal_scores"]
+
+    assert result["human_score"] == 0.55
+    assert signal_scores["perplexity_score"] == 0.75
+    assert signal_scores["stylometry_score"] == 0.25
+    assert signal_scores["perplexity_weight"] == 0.6
+    assert signal_scores["stylometry_weight"] == 0.4
+
+
+def test_classify_text_returns_message_without_groq_key(monkeypatch):
+    monkeypatch.setattr("detector.has_groq_api_key", lambda: False)
+    monkeypatch.setattr("detector.find_stylometry", lambda text: 0.25)
+
+    text = (
+        "This is a longer test paragraph. "
+        "It has enough words to pass the short text check. "
+        "The detector should return the fallback message."
+    )
+
+    result = classify_text(text)
+
+    assert result["human_score"] == 0.25
+    assert result["signal_scores"]["perplexity_score"] is None
+    assert result["signal_scores"]["perplexity_weight"] == 0.0
+    assert result["signal_scores"]["stylometry_weight"] == 1.0
+    assert (
+        result["message"]
+        == "This analysis is only using stylometry as a Grok API key has not been provided, so accuracy can vary."
+    )

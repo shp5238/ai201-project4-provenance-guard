@@ -29,6 +29,7 @@ def test_mark_classification_under_review_updates_original_entry(tmp_path, monke
     assert updated["status"] == "under_review"
     assert updated["appeal_filed"] is True
     assert updated["creator_reasoning"] == "I wrote this myself."
+    assert len(entries) == 1
     assert entries[0]["status"] == "under_review"
     assert entries[0]["appeal_filed"] is True
     assert entries[0]["creator_reasoning"] == "I wrote this myself."
