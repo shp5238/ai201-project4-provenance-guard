@@ -5,6 +5,8 @@ Provenance Guard is a backend system that any creative sharing platform could pl
 
 Full design rationale, edge cases, and AI-tool prompting plan live in [planning.md](planning.md). This README documents the actual implementation.
 
+To use, update .env.example with your API key!
+
 ## Architecture Overview
 
 A submission's raw text is sent to `POST /submit`, scored independently by two signals — an LLM semantic read (Groq) and a stylometric structural read (pure Python) — combined into a single `human_score`, converted into a `confidence` value, and mapped to one of three attribution labels via fixed thresholds. Every classification gets a `content_id` and is written to `src/audit_log.jsonl` before the response returns. An appeal (`POST /appeal`) references that `content_id`, locates the original log entry, and mutates it in place — status, appeal flag, reasoning, timestamp — rather than creating a new classification. `GET /log` exposes the log read-only. See the `## Architecture` diagram in [planning.md](planning.md) for the full flow.
