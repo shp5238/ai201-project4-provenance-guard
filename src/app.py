@@ -1,10 +1,19 @@
 import uuid
 
 from flask import Flask, render_template, request, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from audit_logger import log_event, mark_classification_under_review, read_log
 from detector import classify_text
 
 app = Flask(__name__)
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://",
+)
 
 
 @app.route("/")
@@ -13,6 +22,7 @@ def home():
 
 
 @app.route("/submit", methods=["POST"])
+@limiter.limit("10 per minute;100 per day")
 def submit():
 
     data = request.get_json()
